@@ -8,10 +8,18 @@ use OpenTracing\SpanContext as OTSpanContext;
 class SpanContext implements OTSpanContext
 {
     private $traceId;
+
     private $spanId;
+
     private $parentId;
+
     private $flags;
+
+    /**
+     * @var array
+     */
     private $baggage;
+
     private $debugId;
 
     /**
@@ -32,6 +40,11 @@ class SpanContext implements OTSpanContext
         $this->debugId = null;
     }
 
+    /**
+     * @deprecated
+     * @param $debugId
+     * @return SpanContext
+     */
     public static function withDebugId($debugId)
     {
         $ctx = new SpanContext(null, null, null, null);
@@ -40,6 +53,9 @@ class SpanContext implements OTSpanContext
         return $ctx;
     }
 
+    /**
+     * {@inheritdoc}
+     */
     public function getIterator()
     {
         return new ArrayIterator($this->baggage);
@@ -50,7 +66,7 @@ class SpanContext implements OTSpanContext
      */
     public function getBaggageItem($key)
     {
-        // Not implemented
+        return array_key_exists($key, $this->baggage) ? $this->baggage[$key] : null;
     }
 
     /**
@@ -58,28 +74,19 @@ class SpanContext implements OTSpanContext
      */
     public function withBaggageItem($key, $value)
     {
-        // Not implemented
+        return new self($this->traceId, $this->spanId, $this->parentId, $this->flags, [$key => $value] + $this->baggage);
     }
 
-    /**
-     * @return int
-     */
     public function getTraceId()
     {
         return $this->traceId;
     }
 
-    /**
-     * @return int|null
-     */
     public function getParentId()
     {
         return $this->parentId;
     }
 
-    /**
-     * @return int
-     */
     public function getSpanId()
     {
         return $this->spanId;

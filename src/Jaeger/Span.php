@@ -323,7 +323,7 @@ class Span implements OTSpan
      */
     public function addBaggageItem($key, $value)
     {
-        // TODO: Implement addBaggageItem() method.
+        $this->context = $this->context->withBaggageItem($key, $value);
     }
 
     /**
@@ -331,7 +331,7 @@ class Span implements OTSpan
      */
     public function getBaggageItem($key)
     {
-        // TODO: Implement getBaggageItem() method.
+        return $this->context->getBaggageItem($key);
     }
 
     public function getTags(): array
