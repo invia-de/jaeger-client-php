@@ -13,7 +13,7 @@ Please see [CONTRIBUTING.md](./CONTRIBUTING.md).
 ```sh
 {
   "require": {
-    "jonahgeorge/jaeger-client-php": "0.2.0"
+    "jonahgeorge/jaeger-client-php": "0.3.0"
   }
 }
 ```

@@ -12,7 +12,7 @@ use OpenTracing\Scope as OTScope;
 class ScopeManager implements OTScopeManager
 {
     /**
-     * @var Scope
+     * @var OTScope
      */
     private $active;
 

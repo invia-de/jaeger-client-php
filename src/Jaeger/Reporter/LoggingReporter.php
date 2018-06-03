@@ -11,7 +11,9 @@ use Psr\Log\NullLogger;
  */
 class LoggingReporter implements ReporterInterface
 {
-    /** @var LoggerInterface */
+    /**
+     * @var LoggerInterface
+     */
     private $logger;
 
     /**

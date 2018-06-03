@@ -21,7 +21,7 @@ class Scope implements OTScope
     private $wrapped;
 
     /**
-     * @var Scope|null|OTScope
+     * @var OTScope|null
      */
     private $toRestore;
 

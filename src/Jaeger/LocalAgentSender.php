@@ -8,13 +8,12 @@ use Jaeger\ThriftGen\AnnotationType;
 use Jaeger\ThriftGen\BinaryAnnotation;
 use Jaeger\ThriftGen\Endpoint;
 use Jaeger\ThriftGen\Span;
+use const OpenTracing\Tags\COMPONENT;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use Thrift\Exception\TTransportException;
 use Thrift\Protocol\TCompactProtocol;
 use Thrift\Transport\TBufferedTransport;
-
-use const OpenTracing\Ext\Tags\COMPONENT;
 
 class LocalAgentSender
 {

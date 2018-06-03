@@ -5,14 +5,12 @@ namespace Jaeger;
 use Exception;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
-
 use Jaeger\Codec\BinaryCodec;
 use Jaeger\Codec\CodecInterface;
 use Jaeger\Codec\TextCodec;
 use Jaeger\Codec\ZipkinCodec;
 use Jaeger\Reporter\ReporterInterface;
 use Jaeger\Sampler\SamplerInterface;
-
 use OpenTracing\Tracer as OTTracer;
 use OpenTracing\SpanContext as OTSpanContext;
 use OpenTracing\Reference;
@@ -87,16 +85,16 @@ class Tracer implements OTTracer
      * @param array|null $tags
      */
     public function __construct(
-        string $serviceName,
+        $serviceName,
         ReporterInterface $reporter,
         SamplerInterface $sampler,
-        bool $oneSpanPerRpc = True,
+        $oneSpanPerRpc = True,
         LoggerInterface $logger = null,
         ScopeManager $scopeManager = null,
-        string $traceIdHeader = TRACE_ID_HEADER,
-        string $baggageHeaderPrefix = BAGGAGE_HEADER_PREFIX,
-        string $debugIdHeader = DEBUG_ID_HEADER_KEY,
-        array $tags = null
+        $traceIdHeader = TRACE_ID_HEADER,
+        $baggageHeaderPrefix = BAGGAGE_HEADER_PREFIX,
+        $debugIdHeader = DEBUG_ID_HEADER_KEY,
+        $tags = null
     )
     {
         $this->serviceName = $serviceName;
@@ -151,6 +149,8 @@ class Tracer implements OTTracer
         if (!($options instanceof StartSpanOptions)) {
             $options = StartSpanOptions::create($options);
         }
+
+        $parent = $options->getReferences()
 
         $parent = $options['child_of'] ?? null;
         $tags = $options['tags'] ?? null;
