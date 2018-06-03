@@ -3,9 +3,9 @@
 namespace Jaeger;
 
 use ArrayIterator;
-use OpenTracing;
+use OpenTracing\SpanContext as OTSpanContext;
 
-class SpanContext implements OpenTracing\SpanContext
+class SpanContext implements OTSpanContext
 {
     private $traceId;
     private $spanId;
@@ -14,6 +14,14 @@ class SpanContext implements OpenTracing\SpanContext
     private $baggage;
     private $debugId;
 
+    /**
+     * SpanContext constructor.
+     * @param $traceId
+     * @param $spanId
+     * @param $parentId
+     * @param $flags
+     * @param array $baggage
+     */
     public function __construct($traceId, $spanId, $parentId, $flags, $baggage = [])
     {
         $this->traceId = $traceId;
@@ -38,48 +46,40 @@ class SpanContext implements OpenTracing\SpanContext
     }
 
     /**
-     * @param string $key
-     * @return string
+     * {@inheritdoc}
      */
-    public function getBaggageItem($key): string
+    public function getBaggageItem($key)
     {
-        return $this->baggage[$key];
+        // Not implemented
     }
 
     /**
-     * Creates a new SpanContext out of the existing one and the new key:value pair.
-     *
-     * @param string $key
-     * @param string $value
-     * @return \OpenTracing\SpanContext
+     * {@inheritdoc}
      */
     public function withBaggageItem($key, $value)
     {
-        $baggage = $this->baggage;
-        $baggage[$key] = $value;
-
-        return new SpanContext(
-            $this->traceId,
-            $this->spanId,
-            $this->parentId,
-            $this->flags,
-            $baggage
-        );
+        // Not implemented
     }
 
-    /** @return int */
+    /**
+     * @return int
+     */
     public function getTraceId()
     {
         return $this->traceId;
     }
 
-    /** @return int|null */
+    /**
+     * @return int|null
+     */
     public function getParentId()
     {
         return $this->parentId;
     }
 
-    /** @return int */
+    /**
+     * @return int
+     */
     public function getSpanId()
     {
         return $this->spanId;

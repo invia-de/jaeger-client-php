@@ -2,35 +2,42 @@
 
 namespace Jaeger;
 
+use Exception;
+use Psr\Log\LoggerInterface;
+use Psr\Log\NullLogger;
+
 use Jaeger\Codec\BinaryCodec;
 use Jaeger\Codec\CodecInterface;
 use Jaeger\Codec\TextCodec;
 use Jaeger\Codec\ZipkinCodec;
 use Jaeger\Reporter\ReporterInterface;
 use Jaeger\Sampler\SamplerInterface;
-use Monolog\Logger;
-use OpenTracing\Exceptions\InvalidSpanOption;
-use OpenTracing\Exceptions\SpanContextNotFound;
-use OpenTracing\Exceptions\UnsupportedFormat;
-use OpenTracing;
-use const OpenTracing\Ext\Tags\SPAN_KIND;
-use const OpenTracing\Ext\Tags\SPAN_KIND_RPC_SERVER;
+
+use OpenTracing\Tracer as OTTracer;
+use OpenTracing\SpanContext as OTSpanContext;
+use OpenTracing\Reference;
+use OpenTracing\StartSpanOptions;
 use const OpenTracing\Formats\BINARY;
 use const OpenTracing\Formats\HTTP_HEADERS;
 use const OpenTracing\Formats\TEXT_MAP;
-use OpenTracing\Propagation\Reader;
-use OpenTracing\Propagation\Writer;
-use Psr\Log\LoggerInterface;
+use const OpenTracing\Tags\SPAN_KIND;
+use const OpenTracing\Tags\SPAN_KIND_RPC_SERVER;
 
-class Tracer implements OpenTracing\Tracer
+class Tracer implements OTTracer
 {
-    /** @var string */
+    /**
+     * @var string
+     */
     private $serviceName;
 
-    /** @var ReporterInterface */
+    /**
+     * @var ReporterInterface
+     */
     private $reporter;
 
-    /** @var SamplerInterface */
+    /**
+     * @var SamplerInterface
+     */
     private $sampler;
 
     private $ipAddress;
@@ -39,26 +46,53 @@ class Tracer implements OpenTracing\Tracer
 
     private $metrics;
 
-    /** @var string */
+    /**
+     * @var string
+     */
     private $debugIdHeader;
 
-    /** @var CodecInterface[] */
+    /**
+     * @var CodecInterface[]
+     */
     private $codecs;
 
-    /** @var LoggerInterface */
+    /**
+     * @var LoggerInterface
+     */
     private $logger;
 
-    /** @var bool */
+    /**
+     * @var bool
+     */
     private $oneSpanPerRpc;
 
     private $tags;
 
+    /**
+     * @var ScopeManager
+     */
+    private $scopeManager;
+
+    /**
+     * Tracer constructor.
+     * @param string $serviceName
+     * @param ReporterInterface $reporter
+     * @param SamplerInterface $sampler
+     * @param bool $oneSpanPerRpc
+     * @param LoggerInterface|null $logger
+     * @param ScopeManager|null $scopeManager
+     * @param string $traceIdHeader
+     * @param string $baggageHeaderPrefix
+     * @param string $debugIdHeader
+     * @param array|null $tags
+     */
     public function __construct(
         string $serviceName,
         ReporterInterface $reporter,
         SamplerInterface $sampler,
         bool $oneSpanPerRpc = True,
         LoggerInterface $logger = null,
+        ScopeManager $scopeManager = null,
         string $traceIdHeader = TRACE_ID_HEADER,
         string $baggageHeaderPrefix = BAGGAGE_HEADER_PREFIX,
         string $debugIdHeader = DEBUG_ID_HEADER_KEY,
@@ -69,7 +103,9 @@ class Tracer implements OpenTracing\Tracer
         $this->reporter = $reporter;
         $this->sampler = $sampler;
         $this->oneSpanPerRpc = $oneSpanPerRpc;
-        $this->logger = $logger ?? new Logger('jaeger_tracing');
+
+        $this->logger = $logger ?? new NullLogger();
+        $this->scopeManager = $scopeManager ?? new ScopeManager();
 
         $this->ipAddress = getHostByName(getHostName());
 
@@ -107,31 +143,15 @@ class Tracer implements OpenTracing\Tracer
         }
     }
 
-    public function setSampler(SamplerInterface $sampler)
-    {
-        $this->sampler = $sampler;
-
-        return $this;
-    }
-
-    public function getServiceName(): string
-    {
-        return $this->serviceName;
-    }
-
-    public function getIpAddress()
-    {
-        return $this->ipAddress;
-    }
-
     /**
-     * @param string $operationName
-     * @param array|OpenTracing\SpanOptions $options
-     * @return Span
-     * @throws InvalidSpanOption for invalid option
+     * {@inheritdoc}
      */
     public function startSpan($operationName, $options = [])
     {
+        if (!($options instanceof StartSpanOptions)) {
+            $options = StartSpanOptions::create($options);
+        }
+
         $parent = $options['child_of'] ?? null;
         $tags = $options['tags'] ?? null;
         $startTime = $options['startTime'] ?? null;
@@ -145,7 +165,7 @@ class Tracer implements OpenTracing\Tracer
 
         if ($parent instanceof Span) {
             /** @var SpanContext $parent */
-           $parent = $parent->getContext();
+            $parent = $parent->getContext();
         }
 
         $rpcServer = ($tags !== null) &&
@@ -211,56 +231,47 @@ class Tracer implements OpenTracing\Tracer
     }
 
     /**
-     * @param OpenTracing\SpanContext $spanContext
-     * @param int $format
-     * @param Writer $carrier
-     * @throws UnsupportedFormat when the format is not recognized by the tracer
-     * implementation
+     * {@inheritdoc}
      */
-    public function inject(OpenTracing\SpanContext $spanContext, $format, &$carrier)
+    public function inject(OTSpanContext $spanContext, $format, &$carrier)
     {
-        $codec = $this->codecs[$format] ?? null;
-        if ($codec === null) {
-            throw new UnsupportedFormat($format);
+        if ($spanContext instanceof SpanContext) {
+            $setter = $this->getSetterByFormat($format);
+            $injector = $this->propagation->getInjector($setter);
+            return $injector($spanContext->getContext(), $carrier);
         }
 
-        return $codec->inject($spanContext, $carrier);
+        throw new \InvalidArgumentException(sprintf(
+            'Invalid span context. Expected Jaeger\SpanContext, got %s.',
+            is_object($spanContext) ? get_class($spanContext) : gettype($spanContext)
+        ));
     }
 
     /**
-     * @param int $format
-     * @param Reader $carrier
-     * @return OpenTracing\SpanContext
-     * @throws SpanContextNotFound when a context could not be extracted from Reader
-     * @throws UnsupportedFormat when the format is not recognized by the tracer
-     * implementation
+     * {@inheritdoc}
      */
     public function extract($format, $carrier)
     {
-        $codec = $this->codecs[$format] ?? null;
-        if ($codec === null) {
-            throw new UnsupportedFormat($format);
-        }
-
-        $context = $codec->extract($carrier);
-        if ($context === null) {
-            throw new SpanContextNotFound('Failed to find span context');
-        }
-
-        return $context;
+//        $getter = $this->getGetterByFormat($format);
+//        $extractor =  $this->propagation->getExtractor($getter);
+//        $extractedContext = $extractor($carrier);
+//
+//        if ($extractedContext instanceof TraceContext) {
+//            return ZipkinOpenTracingContext::fromTraceContext($extractedContext);
+//        }
+//
+//        if ($extractedContext instanceof SamplingFlags) {
+//            return ZipkinOpenPartialTracingContext::fromSamplingFlags($extractedContext);
+//        }
+//
+//        throw new \UnexpectedValueException(sprintf(
+//            'Invalid extracted context. Expected Zipkin\SamplingFlags, got %s',
+//            is_object($extractedContext) ? get_class($extractedContext) : gettype($extractedContext)
+//        ));
     }
 
     /**
-     * Allow tracer to send span data to be instrumented.
-     *
-     * This method might not be needed depending on the tracing implementation
-     * but one should make sure this method is called after the request is finished.
-     * As an implementor, a good idea would be to use an asynchronous message bus
-     * or use the call to fastcgi_finish_request in order to not to delay the end
-     * of the request to the client.
-     *
-     * @see fastcgi_finish_request()
-     * @see https://www.google.com/search?q=message+bus+php
+     * {@inheritdoc}
      */
     public function flush()
     {
@@ -272,13 +283,96 @@ class Tracer implements OpenTracing\Tracer
         $this->reporter->reportSpan($span);
     }
 
-    public function __toString(): string
+    /**
+     * {@inheritdoc}
+     */
+    public function getScopeManager()
     {
-        return 'Tracer';
+        return $this->scopeManager;
     }
 
-    private function randomId(): int
+    /**
+     * {@inheritdoc}
+     */
+    public function getActiveSpan()
+    {
+        $activeScope = $this->getScopeManager()->getActive();
+        if ($activeScope === null) {
+            return null;
+        }
+
+        return $activeScope->getSpan();
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function startActiveSpan($operationName, $options = [])
+    {
+        if (!$options instanceof StartSpanOptions) {
+            $options = StartSpanOptions::create($options);
+        }
+
+        if (!$this->hasParentInOptions($options) && $this->getActiveSpan() !== null) {
+            $parent = $this->getActiveSpan()->getContext();
+            $options = $options->withParent($parent);
+        }
+
+        $span = $this->startSpan($operationName, $options);
+        $scope = $this->scopeManager->activate($span, $options->shouldFinishSpanOnClose());
+
+        return $scope;
+    }
+
+    /**
+     * @param StartSpanOptions $options
+     * @return null|OTSpanContext
+     */
+    private function hasParentInOptions(StartSpanOptions $options)
+    {
+        $references = $options->getReferences();
+        foreach ($references as $ref) {
+            if ($ref->isType(Reference::CHILD_OF)) {
+                return $ref->getContext();
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return int
+     * @throws Exception
+     */
+    private function randomId()
     {
         return random_int(0, PHP_INT_MAX);
+    }
+
+    /**
+     * @param SamplerInterface $sampler
+     * @return $this
+     */
+    public function setSampler(SamplerInterface $sampler)
+    {
+        $this->sampler = $sampler;
+
+        return $this;
+    }
+
+    /**
+     * @return string
+     */
+    public function getServiceName()
+    {
+        return $this->serviceName;
+    }
+
+    /**
+     * @return string
+     */
+    public function getIpAddress()
+    {
+        return $this->ipAddress;
     }
 }

@@ -7,7 +7,9 @@ use PHPUnit\Framework\TestCase;
 
 class TUDPTransportTest extends TestCase
 {
-    /** @var TUDPTransport */
+    /**
+     * @var TUDPTransport
+     */
     private $transport;
 
     public function setUp()
