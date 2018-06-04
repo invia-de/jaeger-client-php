@@ -15,7 +15,6 @@ use OpenTracing\Tracer as OTTracer;
 use OpenTracing\SpanContext as OTSpanContext;
 use OpenTracing\Reference;
 use OpenTracing\StartSpanOptions;
-
 use const OpenTracing\Formats\BINARY;
 use const OpenTracing\Formats\HTTP_HEADERS;
 use const OpenTracing\Formats\TEXT_MAP;
