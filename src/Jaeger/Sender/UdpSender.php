@@ -17,7 +17,7 @@ use Jaeger\Span as JaegerSpan;
 
 use const OpenTracing\Tags\COMPONENT;
 
-class UdpSender
+class UdpSender implements SenderInterface
 {
     const CLIENT_ADDR = "ca";
     const SERVER_ADDR = "sa";

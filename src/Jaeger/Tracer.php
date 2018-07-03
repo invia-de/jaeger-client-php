@@ -130,6 +130,7 @@ class Tracer implements OTTracer
         ];
 
         $this->tags = [
+            'ip' => $this->ipAddress,
             JAEGER_VERSION_TAG_KEY => JAEGER_CLIENT_VERSION,
         ];
         if ($tags !== null) {
@@ -222,7 +223,7 @@ class Tracer implements OTTracer
 
         if (($rpcServer || $parentId === null) && ($flags & SAMPLED_FLAG)) {
             // this is a first-in-process span, and is sampled
-            $span->setTags($this->tags);
+            //$span->setTags($this->tags);
         }
 
         return $span;
@@ -367,5 +368,10 @@ class Tracer implements OTTracer
     public function getIpAddress()
     {
         return $this->ipAddress;
+    }
+
+    public function getTags()
+    {
+        return $this->tags;
     }
 }

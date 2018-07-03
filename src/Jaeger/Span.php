@@ -225,8 +225,7 @@ class Span implements OTSpan
             }
 
             if (!$handled) {
-                $tag = $this->makeStringTag($key, (string) $value);
-                $this->tags[$key] = $tag;
+                $this->tags[$key] = $value;
             }
         }
 

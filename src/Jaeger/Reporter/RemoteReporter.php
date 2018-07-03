@@ -2,7 +2,7 @@
 
 namespace Jaeger\Reporter;
 
-use Jaeger\Sender\UdpSender;
+use Jaeger\Sender\SenderInterface;
 use Jaeger\Span;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
@@ -10,7 +10,7 @@ use Psr\Log\NullLogger;
 class RemoteReporter implements ReporterInterface
 {
     /**
-     * @var UdpSender
+     * @var SenderInterface
      */
     private $transport;
 
@@ -31,13 +31,13 @@ class RemoteReporter implements ReporterInterface
 
     /**
      * RemoteReporter constructor.
-     * @param UdpSender $transport
+     * @param SenderInterface $transport
      * @param string $serviceName
      * @param int $batchSize
      * @param LoggerInterface|null $logger
      */
     public function __construct(
-        UdpSender $transport,
+        SenderInterface $transport,
         string $serviceName,
         int $batchSize = 10,
         LoggerInterface $logger = null

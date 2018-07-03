@@ -10,6 +10,8 @@ use Jaeger\Reporter\ReporterInterface;
 use Jaeger\Sampler\ConstSampler;
 use Jaeger\Sampler\ProbabilisticSampler;
 use Jaeger\Sampler\SamplerInterface;
+use Jaeger\Sender\JaegerThriftSender;
+use Jaeger\Sender\SenderInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use OpenTracing\GlobalTracer;
@@ -177,15 +179,20 @@ class Config
     }
 
     /**
-     * @return UdpSender
+     * @return SenderInterface
      */
-    private function getLocalAgentSender(): UdpSender
+    private function getLocalAgentSender(): SenderInterface
     {
         $udp = new ThriftUdpTransport(
             $this->getLocalAgentReportingHost(),
             $this->getLocalAgentReportingPort(),
             $this->logger
         );
+//        $udp = new ThriftUdpTransport(
+//            $this->getLocalAgentReportingHost(),
+//            5775,
+//            $this->logger
+//        );
 
         $transport = new TBufferedTransport($udp, 4096, 4096);
         try {
@@ -198,6 +205,11 @@ class Config
         $client = new AgentClient($protocol);
 
         $this->logger->info('Initializing Jaeger Tracer with UDP reporter');
+        return new JaegerThriftSender(
+            $client,
+            $this->getBatchSize(),
+            $this->logger
+        );
         return new UdpSender(
             $client,
             $this->getBatchSize(),
