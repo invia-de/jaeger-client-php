@@ -56,7 +56,10 @@ class Span implements OTSpan
 
     private $component;
 
-    private $logs;
+    /**
+     * @var array
+     */
+    private $logs = [];
 
     /**
      * @var BinaryAnnotation[]
@@ -94,7 +97,6 @@ class Span implements OTSpan
         $this->peer = null;
         $this->component = null;
 
-        $this->logs = [];
         foreach ($tags as $key => $value) {
             $this->setTag($key, $value);
         }
@@ -320,7 +322,29 @@ class Span implements OTSpan
      */
     public function log(array $fields = [], $timestamp = null)
     {
-        // TODO: Implement log() method.
+        $this->logs[] = [
+            'fields' => $fields,
+            'timestamp' => $timestamp ?? $this->timestampMicro(),
+        ];
+    }
+
+    /**
+     * Returns the logs.
+     *
+     * [
+     *      [
+     *          'timestamp' => timestamp microsecond,
+     *          'fields' => [
+     *              'error' => 'message',
+     *          ]
+     *      ]
+     * ]
+     *
+     * @return array
+     */
+    public function getLogs(): array
+    {
+        return $this->logs;
     }
 
     /**
