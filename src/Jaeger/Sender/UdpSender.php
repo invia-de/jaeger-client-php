@@ -4,15 +4,16 @@ namespace Jaeger\Sender;
 
 use Exception;
 use Jaeger\Thrift\Agent\AgentClient;
+use Jaeger\Thrift\Agent\Zipkin\Annotation;
 use Jaeger\Thrift\Agent\Zipkin\AnnotationType;
 use Jaeger\Thrift\Agent\Zipkin\BinaryAnnotation;
 use Jaeger\Thrift\Agent\Zipkin\Endpoint;
 use Jaeger\Thrift\Agent\Zipkin\Span as ThriftSpan;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
-use Thrift\Exception\TTransportException;
+use Thrift\Base\TBase;
 use Thrift\Protocol\TCompactProtocol;
-use Thrift\Transport\TBufferedTransport;
+use Thrift\Transport\TMemoryBuffer;
 use Jaeger\Span as JaegerSpan;
 
 use const OpenTracing\Tags\COMPONENT;
@@ -28,11 +29,6 @@ class UdpSender implements SenderInterface
     private $spans = [];
 
     /**
-     * @var int
-     */
-    private $batchSize;
-
-    /**
      * @var AgentClient
      */
     private $client;
@@ -43,35 +39,42 @@ class UdpSender implements SenderInterface
     private $logger;
 
     /**
+     * The maximum length of the thrift-objects for a zipkin-batch.
+     *
+     * @var int
+     */
+    private $maxBufferLength;
+
+    /**
+     * The length of the zipkin-batch overhead.
+     *
+     * @var int
+     */
+    private $zipkinBatchOverheadLength = 30;
+
+    /**
      * UdpSender constructor.
-     * @param AgentClient $client
-     * @param int $batchSize
-     * @param LoggerInterface $logger
+     *
+     * @param AgentClient          $client
+     * @param int                  $maxBufferLength
+     * @param LoggerInterface|null $logger
      */
     public function __construct(
         AgentClient $client,
-        int $batchSize = 10,
+        int $maxBufferLength,
         LoggerInterface $logger = null
     ) {
         $this->client = $client;
-        $this->batchSize = $batchSize;
+        $this->maxBufferLength = $maxBufferLength;
         $this->logger = $logger ?? new NullLogger();
     }
 
     /**
      * @param JaegerSpan $span
-     *
-     * @return int the number of flushed spans
      */
-    public function append(JaegerSpan $span): int
+    public function append(JaegerSpan $span)
     {
         $this->spans[] = $span;
-
-        if (count($this->spans) >= $this->batchSize) {
-            return $this->flush();
-        }
-
-        return 0;
     }
 
     /**
@@ -101,9 +104,17 @@ class UdpSender implements SenderInterface
     {
     }
 
-    private function send(array $spans)
+    /**
+     * Emits the thrift-objects.
+     *
+     * @param array|ThriftSpan[]|TBase[] $thrifts
+     */
+    private function send(array $thrifts)
     {
-        $this->client->emitZipkinBatch($spans);
+        foreach ($this->chunkSplit($thrifts) as $chunk) {
+            /* @var $chunk ThriftSpan[] */
+            $this->client->emitZipkinBatch($chunk);
+        }
     }
 
     /**
@@ -124,10 +135,6 @@ class UdpSender implements SenderInterface
                 $span->getTracer()->getServiceName()
             );
 
-//            foreach ($span->getLogs() as $event) {
-//                $event->setHost($endpoint);
-//            }
-
             $timestamp = $span->getStartTime();
             $duration = $span->getEndTime() - $span->getStartTime();
 
@@ -138,7 +145,7 @@ class UdpSender implements SenderInterface
                 'id' => $span->getContext()->getSpanId(),
                 'parent_id' => $span->getContext()->getParentId() ?? null,
                 'trace_id' => $span->getContext()->getTraceId(),
-                'annotations' => array(), // logs
+                'annotations' => $this->createAnnotations($span, $endpoint),
                 'binary_annotations' => $span->getTags(),
                 'debug' => $span->isDebug(),
                 'timestamp' => $timestamp,
@@ -219,5 +226,77 @@ class UdpSender implements SenderInterface
             "annotation_type" => AnnotationType::BOOL,
             "host" => $host,
         ]);
+    }
+
+    /**
+     * Splits an array of thrift-objects into several chunks when the buffer limit has been reached.
+     *
+     * @param array|ThriftSpan[]|TBase[] $thrifts
+     *
+     * @return array
+     */
+    private function chunkSplit(array $thrifts): array
+    {
+        $actualBufferSize = $this->zipkinBatchOverheadLength;
+        $chunkId = 0;
+        $chunks = [];
+
+        foreach ($thrifts as $thrift) {
+            $spanBufferLength = $this->getBufferLength($thrift);
+
+            if (!empty($chunks[$chunkId]) && ($actualBufferSize + $spanBufferLength) > $this->maxBufferLength) {
+                // point to next chunk
+                ++$chunkId;
+
+                // reset buffer size
+                $actualBufferSize = $this->zipkinBatchOverheadLength;
+            }
+
+            if (!isset($chunks[$chunkId])) {
+                $chunks[$chunkId] = [];
+            }
+
+            $chunks[$chunkId][] = $thrift;
+            $actualBufferSize += $spanBufferLength;
+        }
+
+        return $chunks;
+    }
+
+    /**
+     * Returns the length of a thrift-object.
+     *
+     * @param ThriftSpan|TBase $thrift
+     *
+     * @return int
+     */
+    private function getBufferLength($thrift): int
+    {
+        $memoryBuffer = new TMemoryBuffer();
+
+        $thrift->write(new TCompactProtocol($memoryBuffer));
+
+        return $memoryBuffer->available();
+    }
+
+    /*
+     * @param JaegerSpan $span
+     * @param Endpoint   $endpoint
+     *
+     * @return array|Annotation[]
+     */
+    private function createAnnotations(JaegerSpan $span, Endpoint $endpoint): array
+    {
+        $annotations = [];
+
+        foreach ($span->getLogs() as $values) {
+            $annotations[] = new Annotation([
+                'timestamp' => $values['timestamp'],
+                'value' => json_encode($values['fields']),
+                'host' => $endpoint,
+            ]);
+        }
+
+        return $annotations;
     }
 }

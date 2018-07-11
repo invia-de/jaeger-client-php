@@ -321,9 +321,21 @@ class Span implements OTSpan
      */
     public function log(array $fields = [], $timestamp = null)
     {
+        if ($timestamp instanceof \DateTimeInterface || $timestamp instanceof \DateTime) {
+            $timestamp = $timestamp->getTimestamp();
+        }
+
+        if ($timestamp !== null) {
+            $timestamp = (int) ($timestamp * 1000000);
+        }
+
+        if ($timestamp < $this->getStartTime()) {
+            $timestamp = $this->timestampMicro();
+        }
+
         $this->logs[] = [
             'fields' => $fields,
-            'timestamp' => $timestamp ?? $this->timestampMicro(),
+            'timestamp' => $timestamp,
         ];
     }
 
@@ -332,7 +344,7 @@ class Span implements OTSpan
      *
      * [
      *      [
-     *          'timestamp' => timestamp microsecond,
+     *          'timestamp' => timestamp in microsecond,
      *          'fields' => [
      *              'error' => 'message',
      *          ]

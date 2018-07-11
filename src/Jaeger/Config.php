@@ -94,10 +94,7 @@ class Config
         }
 
         $reporter = new RemoteReporter(
-            $channel,
-            $this->serviceName,
-            $this->getBatchSize(),
-            $this->logger
+            $channel
         );
 
         if ($this->getLogging()) {
@@ -168,14 +165,13 @@ class Config
     }
 
     /**
+     * The UDP max buffer length.
+     *
      * @return int
      */
-    private function getBatchSize(): int
+    private function getMaxBufferLength(): int
     {
-        if (isset($this->config['reporter_batch_size'])) {
-            return (int) $this->config['reporter_batch_size'];
-        }
-        return 10;
+        return (int) ($this->config['max_buffer_length'] ?? 64000);
     }
 
     /**
@@ -194,7 +190,7 @@ class Config
 //            $this->logger
 //        );
 
-        $transport = new TBufferedTransport($udp, 4096, 4096);
+        $transport = new TBufferedTransport($udp, $this->getMaxBufferLength(), $this->getMaxBufferLength());
         try {
             $transport->open();
         } catch (TTransportException $e) {
@@ -212,7 +208,7 @@ class Config
         );
         return new UdpSender(
             $client,
-            $this->getBatchSize(),
+            $this->getMaxBufferLength(),
             $this->logger
         );
     }
